@@ -1,3 +1,6 @@
+[![CircleCI](https://circleci.com/gh/1227977886/contextcheck.svg?style=svg)](https://circleci.com/gh/1227977886/contextcheck)
+
+
 # contextcheck
 
 `contextcheck` is a static analysis tool which checks whether use context.Background() and context.TODO() directly.
