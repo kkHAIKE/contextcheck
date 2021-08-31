@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/1227977886/contextcheck"
+	"github.com/sylvia7788/contextcheck"
 	"golang.org/x/tools/go/analysis/singlechecker"
 )
 
