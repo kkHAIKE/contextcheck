@@ -3,16 +3,20 @@
 
 # contextcheck
 
-`contextcheck` is a static analysis tool, it is used to check a function whether use context.Background() or context.TODO() directly instead of the input ctx when calling the sub-function, or even don't pass the ctx, which will result in a broken call link.
+`contextcheck` is a static analysis tool, it is used to check the function whether use a non-inherited context, which will result in a broken call link.
 
 For example:
 
 ```go
 func call1(ctx context.Context) {
     ...
-    call2(context.Background()) // should use ctx
 
-    call3() // should pass the ctx
+    ctx = getNewCtx(ctx)
+    call2(ctx) // OK
+
+    call2(context.Background()) // Non-inherited new context, use function like `context.WithXXX` instead
+
+    call3() // Function `call3` should pass the context parameter
     ...
 }
 
@@ -23,6 +27,11 @@ func call2(ctx context.Context) {
 func call3() {
     ctx := context.TODO()
     call2(ctx)
+}
+
+func getNewCtx(ctx context.Context) (newCtx context.Context) {
+    ...
+    return
 }
 ```
 
@@ -48,5 +57,5 @@ Invoke `contextcheck` with your package name
 ```bash
 $ contextcheck ./...
 $ # or
-$ contextcheck github.com/you/yourproject/...
+$ go vet -vettool=`which contextcheck` ./...
 ```

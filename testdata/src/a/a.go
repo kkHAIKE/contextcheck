@@ -45,7 +45,7 @@ func f1(ctx context.Context) {
 		f2(ctx)
 	}(ctx)
 
-	f2(context.Background()) // want `The context param may be context\.TODO\(\) or context\.Background\(\), please replace it with another way, such as context\.WithValue\(ctx, key, val\)`
+	f2(context.Background()) // want "Non-inherited new context, use function like `context.WithXXX` instead"
 
 	thunk := MyInt.F
 	thunk(0)
@@ -63,7 +63,7 @@ func f3() {
 func f4(ctx context.Context) {
 	f2(ctx)
 	ctx = context.Background()
-	f2(ctx) // want `The context param may be context\.TODO\(\) or context\.Background\(\), please replace it with another way, such as context\.WithValue\(ctx, key, val\)`
+	f2(ctx) // want "Non-inherited new context, use function like `context.WithXXX` instead"
 }
 
 func f5(ctx context.Context) {
@@ -71,10 +71,21 @@ func f5(ctx context.Context) {
 		f2(ctx)
 	}()
 
-	ctx = context.Background() // want `Invalid call to get new context, please replace it with another way, such as context\.WithValue\(ctx, key, val\)`
+	ctx = context.Background() // want "Non-inherited new context, use function like `context.WithXXX` instead"
 	f2(ctx)
 }
 
 func f6() {
 	f3() // want "Function `f3` should pass the context parameter"
+}
+
+func f7(ctx context.Context) {
+	ctx, cancel := getNewCtx(ctx)
+	defer cancel()
+
+	f2(ctx) // OK
+}
+
+func getNewCtx(ctx context.Context) (newCtx context.Context, cancel context.CancelFunc) {
+	return context.WithCancel(ctx)
 }

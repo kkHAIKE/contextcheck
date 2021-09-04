@@ -17,7 +17,7 @@ import (
 func NewAnalyzer() *analysis.Analyzer {
 	return &analysis.Analyzer{
 		Name: "contextcheck",
-		Doc:  "checkInstr for using context.Background() and context.TODO() directly",
+		Doc:  "check the function whether use a non-inherited context",
 		Run:  NewRun(),
 		Requires: []*analysis.Analyzer{
 			buildssa.Analyzer,
@@ -247,7 +247,7 @@ func (r *runner) collectCtxRef(f *ssa.Function) (refMap map[ssa.Instruction]bool
 
 	for instr := range storeInstrs {
 		if !checkedRefMap[instr.Val] {
-			r.pass.Reportf(instr.Pos(), "Invalid call to get new context, please replace it with another way, such as context.WithValue(ctx, key, val)")
+			r.pass.Reportf(instr.Pos(), "Non-inherited new context, use function like `context.WithXXX` instead")
 			ok = false
 		}
 	}
@@ -255,7 +255,7 @@ func (r *runner) collectCtxRef(f *ssa.Function) (refMap map[ssa.Instruction]bool
 	for instr := range phiInstrs {
 		for _, v := range instr.Edges {
 			if !checkedRefMap[v] {
-				r.pass.Reportf(instr.Pos(), "Invalid call to get new context, please replace it with another way, such as context.WithValue(ctx, key, val)")
+				r.pass.Reportf(instr.Pos(), "Non-inherited new context, use function like `context.WithXXX` instead")
 				ok = false
 			}
 		}
@@ -299,7 +299,7 @@ func (r *runner) checkFuncWithCtx(f *ssa.Function) {
 
 			if tp&CtxIn != 0 {
 				if !refMap[instr] {
-					r.pass.Reportf(instr.Pos(), "The context param may be context.TODO() or context.Background(), please replace it with another way, such as context.WithValue(ctx, key, val)")
+					r.pass.Reportf(instr.Pos(), "Non-inherited new context, use function like `context.WithXXX` instead")
 				}
 			}
 
