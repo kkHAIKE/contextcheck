@@ -11,6 +11,7 @@ import (
 	"github.com/gostaticanalysis/analysisutil"
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/analysis/passes/buildssa"
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/ssa"
 )
 
@@ -18,7 +19,7 @@ func NewAnalyzer() *analysis.Analyzer {
 	return &analysis.Analyzer{
 		Name: "contextcheck",
 		Doc:  "check the function whether use a non-inherited context",
-		Run:  NewRun(),
+		Run:  NewRun(nil),
 		Requires: []*analysis.Analyzer{
 			buildssa.Analyzer,
 		},
@@ -41,6 +42,7 @@ const (
 var (
 	checkedMap     = make(map[string]bool)
 	checkedMapLock sync.RWMutex
+	c              *collector
 )
 
 type runner struct {
@@ -51,8 +53,11 @@ type runner struct {
 	skipFile map[*ast.File]bool
 }
 
-func NewRun() func(pass *analysis.Pass) (interface{}, error) {
+func NewRun(pkgs []*packages.Package) func(pass *analysis.Pass) (interface{}, error) {
+	c = newCollector(pkgs)
 	return func(pass *analysis.Pass) (interface{}, error) {
+		defer c.DecUse(pass)
+
 		r := new(runner)
 		r.run(pass)
 		return nil, nil
@@ -264,15 +269,14 @@ func (r *runner) collectCtxRef(f *ssa.Function) (refMap map[ssa.Instruction]bool
 	return
 }
 
-func (r *runner) buildPkg(f *ssa.Function) {
+func (r *runner) buildPkg(f *ssa.Function) (ff *ssa.Function) {
 	if f.Blocks != nil {
+		ff = f
 		return
 	}
 
-	// only build the pkg which is in the same repo
-	if r.checkIsSameRepo(f.Pkg.Pkg.Path()) {
-		f.Pkg.Build()
-	}
+	ff = c.GetFunction(f)
+	return
 }
 
 func (r *runner) checkIsSameRepo(s string) bool {
@@ -324,7 +328,9 @@ func (r *runner) checkFuncWithCtx(f *ssa.Function) {
 
 			// if ff has no ctx, start deep traversal check
 			if !r.checkIsEntry(ff, instr.Pos()) {
-				r.buildPkg(ff)
+				if ff = r.buildPkg(ff); ff == nil {
+					continue
+				}
 
 				checkingMap := make(map[string]bool)
 				checkingMap[key] = true
@@ -386,7 +392,9 @@ func (r *runner) checkFuncWithoutCtx(f *ssa.Function, checkingMap map[string]boo
 				}
 				checkingMap[key] = true
 
-				r.buildPkg(ff)
+				if ff = r.buildPkg(ff); ff == nil {
+					continue
+				}
 
 				valid := r.checkFuncWithoutCtx(ff, checkingMap)
 				setValue(key, valid)
