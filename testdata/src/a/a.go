@@ -1,4 +1,4 @@
-package a
+package a // want package:"ctxCheck"
 
 import "context"
 
@@ -35,7 +35,7 @@ func f1(ctx context.Context) {
 	newXX().Test()
 
 	f3() // want "Function `f3` should pass the context parameter"
-	f6() // want "Function `f6` should pass the context parameter"
+	f6() // want "Function `f6->f3` should pass the context parameter"
 
 	defer func() {
 		f2(ctx)
@@ -76,7 +76,7 @@ func f5(ctx context.Context) {
 }
 
 func f6() {
-	f3() // want "Function `f3` should pass the context parameter"
+	f3()
 }
 
 func f7(ctx context.Context) {
