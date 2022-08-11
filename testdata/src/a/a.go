@@ -1,6 +1,9 @@
 package a // want package:"ctxCheck"
 
-import "context"
+import (
+	"context"
+	"net/http"
+)
 
 type MyString string
 
@@ -45,7 +48,7 @@ func f1(ctx context.Context) {
 		f2(ctx)
 	}(ctx)
 
-	f2(context.Background()) // want "Non-inherited new context, use function like `context.WithXXX` instead"
+	f2(context.Background()) // want "Non-inherited new context, use function like `context.WithXXX` or `r.Context` instead"
 
 	thunk := MyInt.F
 	thunk(0)
@@ -63,7 +66,7 @@ func f3() {
 func f4(ctx context.Context) {
 	f2(ctx)
 	ctx = context.Background()
-	f2(ctx) // want "Non-inherited new context, use function like `context.WithXXX` instead"
+	f2(ctx) // want "Non-inherited new context, use function like `context.WithXXX` or `r.Context` instead"
 }
 
 func f5(ctx context.Context) {
@@ -88,4 +91,47 @@ func f7(ctx context.Context) {
 
 func getNewCtx(ctx context.Context) (newCtx context.Context, cancel context.CancelFunc) {
 	return context.WithCancel(ctx)
+}
+
+/* ----------------- http ----------------- */
+
+func f8(ctx context.Context, w http.ResponseWriter, r *http.Request) {
+}
+
+func f9(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	f8(ctx, w, r)
+	f8(context.Background(), w, r) // want "Non-inherited new context, use function like `context.WithXXX` or `r.Context` instead"
+}
+
+func f10() {
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		f9(w, r)
+		f8(r.Context(), w, r)
+		f8(context.Background(), w, r) // want "Non-inherited new context, use function like `context.WithXXX` or `r.Context` instead"
+	})
+}
+
+/* ----------------- generics ----------------- */
+
+type MySlice[T int | float32] []T
+
+func (s MySlice[T]) f11(ctx context.Context) T {
+	f3() // generics, Block is nil, wont report
+
+	var sum T
+	for _, value := range s {
+		sum += value
+	}
+	return sum
+}
+
+func f12[T int | int8 | int16 | int32 | int64 | uint | uint8 | uint16 | uint32 | uint64 | float32 | float64](ctx context.Context, a, b T) T {
+	f3() // generics, Block is nil, wont report
+
+	if a > b {
+		return a
+	}
+
+	return b
 }

@@ -2,7 +2,6 @@ package contextcheck
 
 import (
 	"go/ast"
-	"go/token"
 	"go/types"
 	"strconv"
 	"strings"
@@ -29,14 +28,27 @@ func NewAnalyzer() *analysis.Analyzer {
 const (
 	ctxPkg  = "context"
 	ctxName = "Context"
+
+	httpPkg = "net/http"
+	httpRes = "ResponseWriter"
+	httpReq = "Request"
 )
 
 const (
 	CtxIn      int = 1 << iota // ctx in function's param
 	CtxOut                     // ctx in function's results
 	CtxInField                 // ctx in function's field param
+	HttpRes                    // http.ResponseWriter in function's param
+	HttpReq                    // *http.Request in function's param
 
-	CtxInOut = CtxIn | CtxOut
+	HttpHandler = HttpRes | HttpReq
+)
+
+const (
+	EntryWithCtx         int = 1 << iota // has ctx in
+	EntryWithHttpHandler                 // is http handler
+
+	Entry = EntryWithCtx | EntryWithHttpHandler
 )
 
 type resInfo struct {
@@ -53,8 +65,10 @@ type runner struct {
 	pass     *analysis.Pass
 	ctxTyp   *types.Named
 	ctxPTyp  *types.Pointer
-	cmpPath  string
 	skipFile map[*ast.File]bool
+
+	httpResTyps []types.Type
+	httpReqTyps []types.Type
 
 	currentFact ctxFact
 }
@@ -77,33 +91,27 @@ func NewRun(pkgs []*packages.Package) func(pass *analysis.Pass) (interface{}, er
 
 func (r *runner) run(pass *analysis.Pass) {
 	r.pass = pass
-	r.cmpPath = strings.Split(pass.Pkg.Path(), "/")[0]
 	pssa := pass.ResultOf[buildssa.Analyzer].(*buildssa.SSA)
 	funcs := pssa.SrcFuncs
-	name := pass.Pkg.Path()
-	_ = name
 
-	pkg := pssa.Pkg.Prog.ImportedPackage(ctxPkg)
-	if pkg == nil {
+	// collect ctx obj
+	var ok bool
+	r.ctxTyp, r.ctxPTyp, ok = r.getRequiedType(pssa, ctxPkg, ctxName)
+	if !ok {
 		return
 	}
 
-	ctxType := pkg.Type(ctxName)
-	if ctxType == nil {
-		return
-	}
-
-	if resNamed, ok := ctxType.Object().Type().(*types.Named); !ok {
-		return
-	} else {
-		r.ctxTyp = resNamed
-		r.ctxPTyp = types.NewPointer(resNamed)
-	}
+	// collect http obj
+	r.collectHttpTyps(pssa)
 
 	r.skipFile = make(map[*ast.File]bool)
 	r.currentFact = make(ctxFact)
 
-	var tmpFuncs []*ssa.Function
+	type entryInfo struct {
+		f  *ssa.Function // entryfunc
+		tp int           // entrytype
+	}
+	var tmpFuncs []entryInfo
 	for _, f := range funcs {
 		// skip checked function
 		key := f.RelString(nil)
@@ -111,19 +119,19 @@ func (r *runner) run(pass *analysis.Pass) {
 			continue
 		}
 
-		if !r.checkIsEntry(f, f.Pos()) {
+		if entryType := r.checkIsEntry(f); entryType&Entry == 0 {
 			// record the result of nomal function
 			checkingMap := make(map[string]bool)
 			checkingMap[key] = true
 			r.setFact(key, r.checkFuncWithoutCtx(f, checkingMap), f.Name())
 			continue
+		} else {
+			tmpFuncs = append(tmpFuncs, entryInfo{f: f, tp: entryType})
 		}
-
-		tmpFuncs = append(tmpFuncs, f)
 	}
 
-	for _, f := range tmpFuncs {
-		r.checkFuncWithCtx(f)
+	for _, v := range tmpFuncs {
+		r.checkFuncWithCtx(v.f, v.tp)
 	}
 
 	if len(r.currentFact) > 0 {
@@ -131,7 +139,38 @@ func (r *runner) run(pass *analysis.Pass) {
 	}
 }
 
-func (r *runner) noImportedContext(f *ssa.Function) (ret bool) {
+func (r *runner) getRequiedType(pssa *buildssa.SSA, path, name string) (obj *types.Named, pobj *types.Pointer, ok bool) {
+	pkg := pssa.Pkg.Prog.ImportedPackage(path)
+	if pkg == nil {
+		return
+	}
+
+	objTyp := pkg.Type(name)
+	if objTyp == nil {
+		return
+	}
+	obj, ok = objTyp.Object().Type().(*types.Named)
+	if !ok {
+		return
+	}
+	pobj = types.NewPointer(obj)
+
+	return
+}
+
+func (r *runner) collectHttpTyps(pssa *buildssa.SSA) {
+	objRes, pobjRes, ok := r.getRequiedType(pssa, httpPkg, httpRes)
+	if ok {
+		r.httpResTyps = append(r.httpResTyps, objRes, pobjRes, types.NewPointer(pobjRes))
+	}
+
+	objReq, pobjReq, ok := r.getRequiedType(pssa, httpPkg, httpReq)
+	if ok {
+		r.httpReqTyps = append(r.httpReqTyps, objReq, pobjReq, types.NewPointer(pobjReq))
+	}
+}
+
+func (r *runner) noImportedContextAndHttp(f *ssa.Function) (ret bool) {
 	if !f.Pos().IsValid() {
 		return false
 	}
@@ -154,7 +193,7 @@ func (r *runner) noImportedContext(f *ssa.Function) (ret bool) {
 			continue
 		}
 		path = analysisutil.RemoveVendor(path)
-		if path == ctxPkg {
+		if path == ctxPkg || path == httpPkg {
 			return false
 		}
 	}
@@ -162,16 +201,35 @@ func (r *runner) noImportedContext(f *ssa.Function) (ret bool) {
 	return true
 }
 
-func (r *runner) checkIsEntry(f *ssa.Function, pos token.Pos) (ret bool) {
-	if r.noImportedContext(f) {
-		return false
+func (r *runner) checkIsEntry(f *ssa.Function) (entryType int) {
+	if r.noImportedContextAndHttp(f) {
+		return
 	}
 
+	ctxIn, ctxOut := r.checkIsCtx(f)
+	if ctxOut {
+		// skip the function which generate ctx
+		return
+	} else if ctxIn {
+		// has ctx in, ignore *http.Request.Context()
+		entryType |= EntryWithCtx
+		return
+	}
+
+	// check is `func handler(w http.ResponseWriter, r *http.Request) {}`
+	if r.checkIsHttpHandler(f) {
+		entryType |= EntryWithHttpHandler
+	}
+
+	return
+}
+
+func (r *runner) checkIsCtx(f *ssa.Function) (in, out bool) {
 	// check params
 	tuple := f.Signature.Params()
 	for i := 0; i < tuple.Len(); i++ {
 		if r.isCtxType(tuple.At(i).Type()) {
-			ret = true
+			in = true
 			break
 		}
 	}
@@ -179,7 +237,7 @@ func (r *runner) checkIsEntry(f *ssa.Function, pos token.Pos) (ret bool) {
 	// check freevars
 	for _, param := range f.FreeVars {
 		if r.isCtxType(param.Type()) {
-			ret = true
+			in = true
 			break
 		}
 	}
@@ -187,17 +245,56 @@ func (r *runner) checkIsEntry(f *ssa.Function, pos token.Pos) (ret bool) {
 	// check results
 	tuple = f.Signature.Results()
 	for i := 0; i < tuple.Len(); i++ {
-		// skip the function which generate ctx
 		if r.isCtxType(tuple.At(i).Type()) {
-			ret = false
+			out = true
 			break
 		}
 	}
-
 	return
 }
 
-func (r *runner) collectCtxRef(f *ssa.Function) (refMap map[ssa.Instruction]bool, ok bool) {
+func (r *runner) checkIsHttpHandler(f *ssa.Function) bool {
+	// must has no result
+	if f.Signature.Results().Len() > 0 {
+		return false
+	}
+
+	// must has http.ResponseWriter and *http.Request in param or freevar
+	var tp int
+
+	// check params
+	tuple := f.Signature.Params()
+	for i := 0; i < tuple.Len(); i++ {
+		if r.isCtxType(tuple.At(i).Type()) {
+			return false
+		} else if r.isHttpReqType(tuple.At(i).Type()) {
+			tp |= HttpReq
+		} else if r.isHttpResType(tuple.At(i).Type()) {
+			tp |= HttpRes
+		}
+		if tp == HttpHandler {
+			return true
+		}
+	}
+
+	// check freevars
+	for _, param := range f.FreeVars {
+		if r.isCtxType(param.Type()) {
+			return false
+		} else if r.isHttpReqType(param.Type()) {
+			tp |= HttpReq
+		} else if r.isHttpResType(param.Type()) {
+			tp |= HttpRes
+		}
+		if tp == HttpHandler {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (r *runner) collectCtxRef(f *ssa.Function, isHttpHandler bool) (refMap map[ssa.Instruction]bool, ok bool) {
 	ok = true
 	refMap = make(map[ssa.Instruction]bool)
 	checkedRefMap := make(map[ssa.Value]bool)
@@ -289,15 +386,98 @@ func (r *runner) collectCtxRef(f *ssa.Function) (refMap map[ssa.Instruction]bool
 		}
 	}
 
+	if !isHttpHandler {
+		return
+	}
+
+	for _, v := range r.getHttpReqCtx(f) {
+		checkRefs(v, false)
+	}
+
 	return
 }
 
-func (r *runner) checkIsSameRepo(s string) bool {
-	return strings.HasPrefix(s, r.cmpPath+"/")
+func (r *runner) getHttpReqCtx(f *ssa.Function) (rets []ssa.Value) {
+	checkedRefMap := make(map[ssa.Value]bool)
+
+	var checkRefs func(val ssa.Value, fromAddr bool)
+	var checkInstr func(instr ssa.Instruction, fromAddr bool)
+
+	checkRefs = func(val ssa.Value, fromAddr bool) {
+		if val == nil || val.Referrers() == nil {
+			return
+		}
+
+		if checkedRefMap[val] {
+			return
+		}
+		checkedRefMap[val] = true
+
+		for _, instr := range *val.Referrers() {
+			checkInstr(instr, fromAddr)
+		}
+	}
+
+	checkInstr = func(instr ssa.Instruction, fromAddr bool) {
+		switch i := instr.(type) {
+		case ssa.CallInstruction:
+			// find r.Context()
+			if r.getCallInstrCtxType(i)&CtxOut != CtxOut {
+				break
+			}
+
+			for _, v := range i.Common().Args {
+				if !r.isHttpReqType(v.Type()) {
+					continue
+				}
+
+				f := r.getFunction(instr)
+				if f == nil {
+					continue
+				}
+
+				// check is r.Context
+				if f.Signature.Recv() != nil && r.isHttpReqType(f.Signature.Recv().Type()) && f.Name() == ctxName {
+					// collect the return of r.Context
+					rets = append(rets, i.Value())
+				}
+			}
+		case *ssa.Store:
+			if !fromAddr {
+				checkRefs(i.Addr, true)
+			}
+		case *ssa.UnOp:
+			if r.isHttpReqType(i.Type()) {
+				checkRefs(i, false)
+			}
+		case *ssa.MakeClosure:
+		case *ssa.Phi:
+			if r.isHttpReqType(i.Type()) {
+				checkRefs(i, false)
+			}
+		case *ssa.Extract:
+			// http.Request can only be input
+		}
+	}
+
+	for _, param := range f.Params {
+		if r.isHttpReqType(param.Type()) {
+			checkRefs(param, false)
+		}
+	}
+
+	for _, param := range f.FreeVars {
+		if r.isHttpReqType(param.Type()) {
+			checkRefs(param, false)
+		}
+	}
+
+	return
 }
 
-func (r *runner) checkFuncWithCtx(f *ssa.Function) {
-	refMap, ok := r.collectCtxRef(f)
+func (r *runner) checkFuncWithCtx(f *ssa.Function, tp int) {
+	isHttpHandler := tp&EntryWithHttpHandler != 0
+	refMap, ok := r.collectCtxRef(f, isHttpHandler)
 	if !ok {
 		return
 	}
@@ -316,8 +496,13 @@ func (r *runner) checkFuncWithCtx(f *ssa.Function) {
 
 			if tp&CtxIn != 0 {
 				if !refMap[instr] {
-					r.pass.Reportf(instr.Pos(), "Non-inherited new context, use function like `context.WithXXX` instead")
+					r.pass.Reportf(instr.Pos(), "Non-inherited new context, use function like `context.WithXXX` or `r.Context` instead")
 				}
+			}
+
+			// only check if the ctx used in the current function is r.Context()
+			if isHttpHandler {
+				continue
 			}
 
 			ff := r.getFunction(instr)
@@ -379,7 +564,7 @@ func (r *runner) checkFuncWithoutCtx(f *ssa.Function, checkingMap map[string]boo
 				continue
 			}
 
-			if !r.checkIsEntry(ff, instr.Pos()) {
+			if entryType := r.checkIsEntry(ff); entryType&Entry == 0 {
 				// cannot get info from fact, skip
 				if ff.Blocks == nil {
 					continue
@@ -493,6 +678,26 @@ func (r *runner) getFunction(instr ssa.Instruction) (f *ssa.Function) {
 
 func (r *runner) isCtxType(tp types.Type) bool {
 	return types.Identical(tp, r.ctxTyp) || types.Identical(tp, r.ctxPTyp)
+}
+
+func (r *runner) isHttpResType(tp types.Type) bool {
+	var ok bool
+	for _, v := range r.httpResTyps {
+		if ok = types.Identical(v, v); ok {
+			break
+		}
+	}
+	return ok
+}
+
+func (r *runner) isHttpReqType(tp types.Type) bool {
+	var ok bool
+	for _, v := range r.httpReqTyps {
+		if ok = types.Identical(tp, v); ok {
+			break
+		}
+	}
+	return ok
 }
 
 func (r *runner) getValue(key string, f *ssa.Function) (res resInfo, ok bool) {
