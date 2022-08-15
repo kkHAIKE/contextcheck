@@ -48,7 +48,7 @@ func f1(ctx context.Context) {
 		f2(ctx)
 	}(ctx)
 
-	f2(context.Background()) // want "Non-inherited new context, use function like `context.WithXXX` or `r.Context` instead"
+	f2(context.Background()) // want "Non-inherited new context, use function like `context.WithXXX` instead"
 
 	thunk := MyInt.F
 	thunk(0)
@@ -66,7 +66,7 @@ func f3() {
 func f4(ctx context.Context) {
 	f2(ctx)
 	ctx = context.Background()
-	f2(ctx) // want "Non-inherited new context, use function like `context.WithXXX` or `r.Context` instead"
+	f2(ctx) // want "Non-inherited new context, use function like `context.WithXXX` instead"
 }
 
 func f5(ctx context.Context) {
@@ -104,11 +104,20 @@ func f9(w http.ResponseWriter, r *http.Request) {
 	f8(context.Background(), w, r) // want "Non-inherited new context, use function like `context.WithXXX` or `r.Context` instead"
 }
 
-func f10() {
+func f10(in bool, w http.ResponseWriter, r *http.Request) {
+	f8(r.Context(), w, r)
+	f8(context.Background(), w, r)
+}
+
+func f11() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		f9(w, r)
 		f8(r.Context(), w, r)
 		f8(context.Background(), w, r) // want "Non-inherited new context, use function like `context.WithXXX` or `r.Context` instead"
+
+		f9(w, r)
+
+		// f10 should be like `func f10(ctx context.Context, in bool, w http.ResponseWriter, r *http.Request)`
+		f10(true, w, r) // want "Function `f10` should pass the context parameter"
 	})
 }
 
@@ -116,7 +125,7 @@ func f10() {
 
 type MySlice[T int | float32] []T
 
-func (s MySlice[T]) f11(ctx context.Context) T {
+func (s MySlice[T]) f12(ctx context.Context) T {
 	f3() // generics, Block is nil, wont report
 
 	var sum T
@@ -126,7 +135,7 @@ func (s MySlice[T]) f11(ctx context.Context) T {
 	return sum
 }
 
-func f12[T int | int8 | int16 | int32 | int64 | uint | uint8 | uint16 | uint32 | uint64 | float32 | float64](ctx context.Context, a, b T) T {
+func f13[T int | int8 | int16 | int32 | int64 | uint | uint8 | uint16 | uint32 | uint64 | float32 | float64](ctx context.Context, a, b T) T {
 	f3() // generics, Block is nil, wont report
 
 	if a > b {
