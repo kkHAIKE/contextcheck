@@ -6,5 +6,5 @@ import (
 )
 
 func main() {
-	singlechecker.Main(contextcheck.NewAnalyzer())
+	singlechecker.Main(contextcheck.NewAnalyzer(contextcheck.Configuration{}))
 }

@@ -5,6 +5,7 @@ import (
 	"go/types"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gostaticanalysis/analysisutil"
 	"golang.org/x/tools/go/analysis"
@@ -13,16 +14,25 @@ import (
 	"golang.org/x/tools/go/ssa"
 )
 
-func NewAnalyzer() *analysis.Analyzer {
-	return &analysis.Analyzer{
+type Configuration struct {
+	DisableFact bool
+}
+
+func NewAnalyzer(cfg Configuration) *analysis.Analyzer {
+	analyzer := &analysis.Analyzer{
 		Name: "contextcheck",
 		Doc:  "check the function whether use a non-inherited context",
-		Run:  NewRun(nil),
+		Run:  NewRun(nil, cfg.DisableFact),
 		Requires: []*analysis.Analyzer{
 			buildssa.Analyzer,
 		},
-		FactTypes: []analysis.Fact{(*ctxFact)(nil)},
 	}
+
+	if !cfg.DisableFact {
+		analyzer.FactTypes = append(analyzer.FactTypes, (*ctxFact)(nil))
+	}
+
+	return analyzer
 }
 
 const (
@@ -48,6 +58,11 @@ const (
 	EntryWithHttpHandler           // is http handler
 )
 
+var (
+	pkgFactMap = make(map[*types.Package]ctxFact)
+	pkgFactMu  sync.RWMutex
+)
+
 type resInfo struct {
 	Valid bool
 	Funcs []string
@@ -68,9 +83,10 @@ type runner struct {
 	httpReqTyps []types.Type
 
 	currentFact ctxFact
+	disableFact bool
 }
 
-func NewRun(pkgs []*packages.Package) func(pass *analysis.Pass) (interface{}, error) {
+func NewRun(pkgs []*packages.Package, disableFact bool) func(pass *analysis.Pass) (interface{}, error) {
 	m := make(map[string]bool)
 	for _, pkg := range pkgs {
 		m[strings.Split(pkg.PkgPath, "/")[0]] = true
@@ -81,7 +97,8 @@ func NewRun(pkgs []*packages.Package) func(pass *analysis.Pass) (interface{}, er
 			return nil, nil
 		}
 
-		new(runner).run(pass)
+		r := &runner{disableFact: disableFact}
+		r.run(pass)
 		return nil, nil
 	}
 }
@@ -132,7 +149,11 @@ func (r *runner) run(pass *analysis.Pass) {
 	}
 
 	if len(r.currentFact) > 0 {
-		pass.ExportPackageFact(&r.currentFact)
+		if r.disableFact {
+			setPkgFact(pass.Pkg, r.currentFact)
+		} else {
+			pass.ExportPackageFact(&r.currentFact)
+		}
 	}
 }
 
@@ -664,7 +685,13 @@ func (r *runner) getValue(key string, f *ssa.Function) (res resInfo, ok bool) {
 	}
 
 	var fact ctxFact
-	if r.pass.ImportPackageFact(f.Pkg.Pkg, &fact) {
+	var got bool
+	if r.disableFact {
+		fact, got = getPkgFact(f.Pkg.Pkg)
+	} else {
+		got = r.pass.ImportPackageFact(f.Pkg.Pkg, &fact)
+	}
+	if got {
 		res, ok = fact[key]
 	}
 	return
@@ -675,6 +702,21 @@ func (r *runner) setFact(key string, valid bool, funcs ...string) {
 		Valid: valid,
 		Funcs: append(r.currentFact[key].Funcs, funcs...),
 	}
+}
+
+// setPkgFact save fact to mem
+func setPkgFact(pkg *types.Package, fact ctxFact) {
+	pkgFactMu.Lock()
+	pkgFactMap[pkg] = fact
+	pkgFactMu.Unlock()
+}
+
+// getPkgFact get fact from mem
+func getPkgFact(pkg *types.Package) (fact ctxFact, ok bool) {
+	pkgFactMu.RLock()
+	fact, ok = pkgFactMap[pkg]
+	pkgFactMu.RUnlock()
+	return
 }
 
 func reverse(arr1 []string) (arr2 []string) {

@@ -12,7 +12,7 @@ import (
 func Test(t *testing.T) {
 	log.SetFlags(log.Lshortfile)
 	testdata := analysistest.TestData()
-	analyzer := contextcheck.NewAnalyzer()
-	analyzer.Run = contextcheck.NewRun([]*packages.Package{{PkgPath: "a"}})
+	analyzer := contextcheck.NewAnalyzer(contextcheck.Configuration{})
+	analyzer.Run = contextcheck.NewRun([]*packages.Package{{PkgPath: "a"}}, false)
 	analysistest.Run(t, testdata, analyzer, "a")
 }
