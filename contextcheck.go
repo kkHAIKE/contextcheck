@@ -94,7 +94,7 @@ func NewRun(pkgs []*packages.Package, disableFact bool) func(pass *analysis.Pass
 	}
 	return func(pass *analysis.Pass) (interface{}, error) {
 		// skip different repo
-		if !m[strings.Split(pass.Pkg.Path(), "/")[0]] {
+		if len(m) > 0 && !m[strings.Split(pass.Pkg.Path(), "/")[0]] {
 			return nil, nil
 		}
 
@@ -221,9 +221,9 @@ func (r *runner) noImportedContextAndHttp(f *ssa.Function) (ret bool) {
 }
 
 func (r *runner) checkIsEntry(f *ssa.Function) entryType {
-	if r.noImportedContextAndHttp(f) {
-		return EntryNormal
-	}
+	// if r.noImportedContextAndHttp(f) {
+	// 	return EntryNormal
+	// }
 
 	ctxIn, ctxOut := r.checkIsCtx(f)
 	if ctxOut {
