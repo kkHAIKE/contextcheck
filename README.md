@@ -94,6 +94,23 @@ func NoInheritCancel(_ context.Context) (context.Context,context.CancelFunc) {
 }
 ```
 
+You can add `// nolint: contextcheck` in function decl doc comment, to skip this linter in some false-positive case.
+
+```go
+// nolint: contextcheck
+func call1() {
+    doSomeThing(context.Background()) // add nolint will no issuss for that
+}
+
+func call2(ctx context.Context) {
+    call1()
+}
+
+func call3() {
+    call2(context.Background())
+}
+```
+
 ## Installation
 
 You can get `contextcheck` by `go get` command.

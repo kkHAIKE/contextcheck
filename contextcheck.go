@@ -3,6 +3,7 @@ package contextcheck
 import (
 	"go/ast"
 	"go/types"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -239,7 +240,39 @@ func (r *runner) checkIsEntry(f *ssa.Function) entryType {
 		return EntryWithHttpHandler
 	}
 
+	if r.skipByNolint(f) {
+		return EntryNone
+	}
+
 	return EntryNormal
+}
+
+var nolintRe = regexp.MustCompile(`^//\s?nolint:`)
+
+func (r *runner) skipByNolint(f *ssa.Function) bool {
+	file := analysisutil.File(r.pass, f.Pos())
+	if file == nil {
+		return false
+	}
+
+	// only support FuncDecl comment
+	var fd *ast.FuncDecl
+	for _, v := range file.Decls {
+		if tmp, ok := v.(*ast.FuncDecl); ok && tmp.Name.Pos() == f.Pos() {
+			fd = tmp
+			break
+		}
+	}
+	if fd == nil || fd.Doc == nil || len(fd.Doc.List) == 0 {
+		return false
+	}
+
+	for _, v := range fd.Doc.List {
+		if len(nolintRe.FindString(v.Text)) > 0 && strings.Contains(v.Text, "contextcheck") {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *runner) checkIsCtx(f *ssa.Function) (in, out bool) {

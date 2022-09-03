@@ -109,6 +109,11 @@ func f10(in bool, w http.ResponseWriter, r *http.Request) {
 	f8(context.Background(), w, r)
 }
 
+// nolint: contextcheck
+func f14(w http.ResponseWriter, r *http.Request, err error) {
+	f8(r.Context(), w, r)
+}
+
 func f11() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		f8(r.Context(), w, r)
@@ -118,6 +123,8 @@ func f11() {
 
 		// f10 should be like `func f10(ctx context.Context, in bool, w http.ResponseWriter, r *http.Request)`
 		f10(true, w, r) // want "Function `f10` should pass the context parameter"
+
+		f14(w, r, nil)
 	})
 }
 
