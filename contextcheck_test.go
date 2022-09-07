@@ -4,7 +4,7 @@ import (
 	"log"
 	"testing"
 
-	"github.com/sylvia7788/contextcheck"
+	"github.com/kkHAIKE/contextcheck"
 	"golang.org/x/tools/go/analysis/analysistest"
 	"golang.org/x/tools/go/packages"
 )

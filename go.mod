@@ -1,4 +1,4 @@
-module github.com/sylvia7788/contextcheck
+module github.com/kkHAIKE/contextcheck
 
 go 1.15
 

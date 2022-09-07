@@ -72,7 +72,7 @@ func call8() {
 
 ## Tips
 
-You can break ctx inheritance by this way, eg: [issue](https://github.com/sylvia7788/contextcheck/issues/2).
+You can break ctx inheritance by this way, eg: [issue](https://github.com/kkHAIKE/contextcheck/issues/2).
 
 ```go
 func call1(ctx context.Context) {
@@ -116,7 +116,7 @@ func call3() {
 You can get `contextcheck` by `go get` command.
 
 ```bash
-$ go get -u github.com/sylvia7788/contextcheck
+$ go get -u github.com/kkHAIKE/contextcheck
 ```
 
 or build yourself.
