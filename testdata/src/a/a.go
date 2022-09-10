@@ -114,6 +114,11 @@ func f14(w http.ResponseWriter, r *http.Request, err error) {
 	f8(r.Context(), w, r)
 }
 
+// @contextcheck(req_has_ctx)
+func f15(w http.ResponseWriter, r *http.Request, err error) {
+	f8(r.Context(), w, r)
+}
+
 func f11() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		f8(r.Context(), w, r)
@@ -125,6 +130,7 @@ func f11() {
 		f10(true, w, r) // want "Function `f10` should pass the context parameter"
 
 		f14(w, r, nil)
+		f15(w, r, nil)
 	})
 }
 
