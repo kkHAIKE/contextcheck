@@ -136,6 +136,9 @@ func (r *runner) run(pass *analysis.Pass) {
 		}
 
 		if entryType := r.checkIsEntry(f); entryType == EntryNormal {
+			if _, ok := r.getValue(key, f); ok {
+				continue
+			}
 			// record the result of nomal function
 			checkingMap := make(map[string]bool)
 			checkingMap[key] = true
@@ -587,7 +590,10 @@ func (r *runner) checkFuncWithoutCtx(f *ssa.Function, checkingMap map[string]boo
 				checkingMap[key] = true
 
 				valid := r.checkFuncWithoutCtx(ff, checkingMap)
-				r.setFact(orgKey, valid, ff.Name())
+				r.setFact(key, valid, ff.Name())
+				if res, ok := r.getValue(key, ff); ok {
+					r.setFact(orgKey, valid, res.Funcs...)
+				}
 				if !valid {
 					ret = false
 				}
@@ -732,9 +738,13 @@ func (r *runner) getValue(key string, f *ssa.Function) (res resInfo, ok bool) {
 }
 
 func (r *runner) setFact(key string, valid bool, funcs ...string) {
+	var names []string
+	if !valid {
+		names = append(r.currentFact[key].Funcs, funcs...)
+	}
 	r.currentFact[key] = resInfo{
 		Valid: valid,
-		Funcs: append(r.currentFact[key].Funcs, funcs...),
+		Funcs: names,
 	}
 }
 
