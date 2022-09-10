@@ -19,6 +19,8 @@ type Configuration struct {
 	DisableFact bool
 }
 
+var pkgprefix string
+
 func NewAnalyzer(cfg Configuration) *analysis.Analyzer {
 	analyzer := &analysis.Analyzer{
 		Name: "contextcheck",
@@ -28,6 +30,7 @@ func NewAnalyzer(cfg Configuration) *analysis.Analyzer {
 			buildssa.Analyzer,
 		},
 	}
+	analyzer.Flags.StringVar(&pkgprefix, "pkgprefix", "", "filter init pkgs (only for cmd)")
 
 	if !cfg.DisableFact {
 		analyzer.FactTypes = append(analyzer.FactTypes, (*ctxFact)(nil))
@@ -100,6 +103,9 @@ func NewRun(pkgs []*packages.Package, disableFact bool) func(pass *analysis.Pass
 	return func(pass *analysis.Pass) (interface{}, error) {
 		// skip different repo
 		if len(m) > 0 && !m[strings.Split(pass.Pkg.Path(), "/")[0]] {
+			return nil, nil
+		}
+		if len(m) == 0 && pkgprefix != "" && !strings.HasPrefix(pass.Pkg.Path(), pkgprefix) {
 			return nil, nil
 		}
 
