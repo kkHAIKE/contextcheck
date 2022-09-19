@@ -113,7 +113,7 @@ func call3() {
 ```
 
 ### force mark specify function have server-side http.Request parameter
-default behavior is mark http.HandlerFunc only.
+default behavior is mark http.HandlerFunc or a function use r.Context().
 
 ```go
 // @contextcheck(req_has_ctx)

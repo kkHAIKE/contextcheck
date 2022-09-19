@@ -584,6 +584,7 @@ func (r *runner) checkFuncWithCtx(f *ssa.Function, tp entryType) {
 func (r *runner) checkFuncWithoutCtx(f *ssa.Function, checkingMap map[string]bool) (ret bool) {
 	ret = true
 	orgKey := f.RelString(nil)
+	var seted bool
 	for _, b := range f.Blocks {
 		for _, instr := range b.Instrs {
 			tp, ok := r.getCtxType(instr)
@@ -614,7 +615,10 @@ func (r *runner) checkFuncWithoutCtx(f *ssa.Function, checkingMap map[string]boo
 					ret = false
 
 					// save the call link
-					r.setFact(orgKey, res.Valid, res.Funcs...)
+					if !seted {
+						seted = true
+						r.setFact(orgKey, res.Valid, res.Funcs...)
+					}
 				}
 				continue
 			}
@@ -638,7 +642,8 @@ func (r *runner) checkFuncWithoutCtx(f *ssa.Function, checkingMap map[string]boo
 
 				valid := r.checkFuncWithoutCtx(ff, checkingMap)
 				r.setFact(key, valid, ff.Name())
-				if res, ok := r.getValue(key, ff); ok {
+				if res, ok := r.getValue(key, ff); ok && !valid && !seted {
+					seted = true
 					r.setFact(orgKey, valid, res.Funcs...)
 				}
 				if !valid {
