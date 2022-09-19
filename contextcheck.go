@@ -351,19 +351,14 @@ func (r *runner) checkIsHttpHandler(f *ssa.Function, reqctx bool) bool {
 		return true
 	}
 
-	// check if use r.Context()
-	if f.Blocks != nil && len(r.getHttpReqCtx(f, true)) > 0 {
+	// must be `func f(w http.ResponseWriter, r *http.Request) {}`
+	if f.Signature.Results().Len() == 0 && tuple.Len() == 2 &&
+		r.isHttpResType(tuple.At(0).Type()) && r.isHttpReqType(tuple.At(1).Type()) {
 		return true
 	}
 
-	// must be `func f(w http.ResponseWriter, r *http.Request) {}`
-	if f.Signature.Results().Len() > 0 {
-		return false
-	}
-	if tuple.Len() != 2 {
-		return false
-	}
-	return r.isHttpResType(tuple.At(0).Type()) && r.isHttpReqType(tuple.At(1).Type())
+	// check if use r.Context()
+	return f.Blocks != nil && len(r.getHttpReqCtx(f, true)) > 0
 }
 
 func (r *runner) collectCtxRef(f *ssa.Function, isHttpHandler bool) (refMap map[ssa.Instruction]bool, ok bool) {
