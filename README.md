@@ -71,8 +71,8 @@ func call8() {
 ```
 
 ## Tips
-
-You can break ctx inheritance by this way, eg: [issue](https://github.com/kkHAIKE/contextcheck/issues/2).
+### need break ctx inheritance
+eg: [issue](https://github.com/kkHAIKE/contextcheck/issues/2).
 
 ```go
 func call1(ctx context.Context) {
@@ -94,6 +94,7 @@ func NoInheritCancel(_ context.Context) (context.Context,context.CancelFunc) {
 }
 ```
 
+### skip check specify function
 You can add `// nolint: contextcheck` in function decl doc comment, to skip this linter in some false-positive case.
 
 ```go
@@ -108,6 +109,25 @@ func call2(ctx context.Context) {
 
 func call3() {
     call2(context.Background())
+}
+```
+
+### force mark specify function have server-side http.Request parameter
+default behavior is mark http.HandlerFunc only.
+
+```go
+// @contextcheck(req_has_ctx)
+func writeErr(w http.ResponseWriter, r *http.Request, err error) {
+    doSomeThing(r.Context())
+}
+
+func handler(w http.ResponseWriter, r *http.Request) {
+    ...
+    if err != nil {
+        writeErr(w, r, err)
+        return
+    }
+    ...
 }
 ```
 
