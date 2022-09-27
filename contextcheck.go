@@ -24,7 +24,7 @@ var pkgprefix string
 func NewAnalyzer(cfg Configuration) *analysis.Analyzer {
 	analyzer := &analysis.Analyzer{
 		Name: "contextcheck",
-		Doc:  "check the function whether use a non-inherited context",
+		Doc:  "check whether the function uses a non-inherited context",
 		Run:  NewRun(nil, cfg.DisableFact),
 		Requires: []*analysis.Analyzer{
 			buildssa.Analyzer,
