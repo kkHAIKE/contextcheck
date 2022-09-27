@@ -106,12 +106,12 @@ func f9(w http.ResponseWriter, r *http.Request) {
 
 func f10(in bool, w http.ResponseWriter, r *http.Request) {
 	f8(r.Context(), w, r)
-	f8(context.Background(), w, r)
+	f8(context.Background(), w, r) // want "Non-inherited new context, use function like `context.WithXXX` or `r.Context` instead"
 }
 
 // nolint: contextcheck
 func f14(w http.ResponseWriter, r *http.Request, err error) {
-	f8(r.Context(), w, r)
+	f8(context.Background(), w, r)
 }
 
 // @contextcheck(req_has_ctx)
@@ -126,9 +126,7 @@ func f11() {
 
 		f9(w, r)
 
-		// f10 should be like `func f10(ctx context.Context, in bool, w http.ResponseWriter, r *http.Request)`
-		f10(true, w, r) // want "Function `f10` should pass the context parameter"
-
+		f10(true, w, r)
 		f14(w, r, nil)
 		f15(w, r, nil)
 	})
