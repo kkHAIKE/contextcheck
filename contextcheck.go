@@ -97,14 +97,25 @@ type runner struct {
 	disableFact bool
 }
 
+func getPkgRoot(pkg string) string {
+	arr := strings.Split(pkg, "/")
+	if len(arr) < 3 {
+		return arr[0]
+	}
+	if strings.IndexByte(arr[0], '.') == -1 {
+		return arr[0]
+	}
+	return strings.Join(arr[:3], "/")
+}
+
 func NewRun(pkgs []*packages.Package, disableFact bool) func(pass *analysis.Pass) (interface{}, error) {
 	m := make(map[string]bool)
 	for _, pkg := range pkgs {
-		m[strings.Split(pkg.PkgPath, "/")[0]] = true
+		m[getPkgRoot(pkg.PkgPath)] = true
 	}
 	return func(pass *analysis.Pass) (interface{}, error) {
 		// skip different repo
-		if len(m) > 0 && !m[strings.Split(pass.Pkg.Path(), "/")[0]] {
+		if len(m) > 0 && !m[getPkgRoot(pass.Pkg.Path())] {
 			return nil, nil
 		}
 		if len(m) == 0 && pkgprefix != "" && !strings.HasPrefix(pass.Pkg.Path(), pkgprefix) {
