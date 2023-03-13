@@ -137,7 +137,7 @@ func f11() {
 type MySlice[T int | float32] []T
 
 func (s MySlice[T]) f12(ctx context.Context) T {
-	f3() // generics, Block is nil, wont report
+	f3() // want "Function `f3` should pass the context parameter"
 
 	var sum T
 	for _, value := range s {
@@ -147,7 +147,7 @@ func (s MySlice[T]) f12(ctx context.Context) T {
 }
 
 func f13[T int | int8 | int16 | int32 | int64 | uint | uint8 | uint16 | uint32 | uint64 | float32 | float64](ctx context.Context, a, b T) T {
-	f3() // generics, Block is nil, wont report
+	f3() // want "Function `f3` should pass the context parameter"
 
 	if a > b {
 		return a
