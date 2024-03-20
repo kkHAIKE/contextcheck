@@ -455,6 +455,10 @@ func (r *runner) collectCtxRef(f *ssa.Function, isHttpHandler bool) (refMap map[
 	}
 
 	for instr := range storeInstrs {
+		if !instr.Pos().IsValid() {
+			continue
+		}
+
 		if !checkedRefMap[instr.Val] {
 			r.pass.Reportf(instr.Pos(), "Non-inherited new context, use function like `context.WithXXX` instead")
 			ok = false
@@ -462,6 +466,10 @@ func (r *runner) collectCtxRef(f *ssa.Function, isHttpHandler bool) (refMap map[
 	}
 
 	for instr := range phiInstrs {
+		if !instr.Pos().IsValid() {
+			continue
+		}
+
 		for _, v := range instr.Edges {
 			if !checkedRefMap[v] {
 				r.pass.Reportf(instr.Pos(), "Non-inherited new context, use function like `context.WithXXX` instead")
@@ -551,6 +559,10 @@ func (r *runner) checkFuncWithCtx(f *ssa.Function, tp entryType) {
 
 	for _, b := range f.Blocks {
 		for _, instr := range b.Instrs {
+			if !instr.Pos().IsValid() {
+				continue
+			}
+
 			tp, ok := r.getCtxType(instr)
 			if !ok {
 				continue
