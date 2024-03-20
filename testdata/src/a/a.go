@@ -155,3 +155,11 @@ func f13[T int | int8 | int16 | int32 | int64 | uint | uint8 | uint16 | uint32 |
 
 	return b
 }
+
+/* ----------------- issue 21 ----------------- */
+
+func f16(ctx context.Context, k string) func() {
+	return func() {
+		f16(context.Background(), k)
+	}
+}
