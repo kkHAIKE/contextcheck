@@ -4,7 +4,6 @@ import (
 	"go/ast"
 	"go/types"
 	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -214,37 +213,6 @@ func (r *runner) collectHttpTyps(pssa *buildssa.SSA) {
 	if ok {
 		r.httpReqTyps = append(r.httpReqTyps, pobjReq)
 	}
-}
-
-func (r *runner) noImportedContextAndHttp(f *ssa.Function) (ret bool) {
-	if !f.Pos().IsValid() {
-		return false
-	}
-
-	file := analysisutil.File(r.pass, f.Pos())
-	if file == nil {
-		return false
-	}
-
-	if skip, has := r.skipFile[file]; has {
-		return skip
-	}
-	defer func() {
-		r.skipFile[file] = ret
-	}()
-
-	for _, impt := range file.Imports {
-		path, err := strconv.Unquote(impt.Path.Value)
-		if err != nil {
-			continue
-		}
-		path = analysisutil.RemoveVendor(path)
-		if path == ctxPkg || path == httpPkg {
-			return false
-		}
-	}
-
-	return true
 }
 
 func (r *runner) checkIsEntry(f *ssa.Function) (ret entryType) {
