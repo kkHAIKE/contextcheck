@@ -158,8 +158,8 @@ func f13[T int | int8 | int16 | int32 | int64 | uint | uint8 | uint16 | uint32 |
 
 /* ----------------- issue 21 ----------------- */
 
-func f16(ctx context.Context, k string) func() { // want "Function `f16\\$1` should pass the context parameter"
-	return func() {
+func f16(ctx context.Context, k string) func() {
+	return func() { // want "Function `f16\\$1` should pass the context parameter"
 		f16(context.Background(), k)
 	}
 }

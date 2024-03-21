@@ -589,6 +589,22 @@ func (r *runner) checkFuncWithCtx(f *ssa.Function, tp entryType) {
 
 func (r *runner) Reportf(instr ssa.Instruction, format string, args ...interface{}) {
 	pos := instr.Pos()
+
+	if !pos.IsValid() && instr.Block() != nil {
+		if closure, ok := instr.(*ssa.MakeClosure); ok {
+			for _, in := range closure.Block().Instrs {
+				if !in.Pos().IsValid() {
+					continue
+				}
+
+				if r, ok := in.(*ssa.Return); ok {
+					pos = r.Pos()
+					break
+				}
+			}
+		}
+	}
+
 	if !pos.IsValid() && instr.Parent() != nil {
 		pos = instr.Parent().Pos()
 	}
