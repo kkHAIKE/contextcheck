@@ -455,24 +455,16 @@ func (r *runner) collectCtxRef(f *ssa.Function, isHttpHandler bool) (refMap map[
 	}
 
 	for instr := range storeInstrs {
-		if !instr.Pos().IsValid() {
-			continue
-		}
-
 		if !checkedRefMap[instr.Val] {
-			r.pass.Reportf(instr.Pos(), "Non-inherited new context, use function like `context.WithXXX` instead")
+			r.Reportf(instr, "Non-inherited new context, use function like `context.WithXXX` instead")
 			ok = false
 		}
 	}
 
 	for instr := range phiInstrs {
-		if !instr.Pos().IsValid() {
-			continue
-		}
-
 		for _, v := range instr.Edges {
 			if !checkedRefMap[v] {
-				r.pass.Reportf(instr.Pos(), "Non-inherited new context, use function like `context.WithXXX` instead")
+				r.Reportf(instr, "Non-inherited new context, use function like `context.WithXXX` instead")
 				ok = false
 			}
 		}
@@ -559,10 +551,6 @@ func (r *runner) checkFuncWithCtx(f *ssa.Function, tp entryType) {
 
 	for _, b := range f.Blocks {
 		for _, instr := range b.Instrs {
-			if !instr.Pos().IsValid() {
-				continue
-			}
-
 			tp, ok := r.getCtxType(instr)
 			if !ok {
 				continue
@@ -576,9 +564,9 @@ func (r *runner) checkFuncWithCtx(f *ssa.Function, tp entryType) {
 			if tp&CtxIn != 0 {
 				if !refMap[instr] {
 					if isHttpHandler {
-						r.pass.Reportf(instr.Pos(), "Non-inherited new context, use function like `context.WithXXX` or `r.Context` instead")
+						r.Reportf(instr, "Non-inherited new context, use function like `context.WithXXX` or `r.Context` instead")
 					} else {
-						r.pass.Reportf(instr.Pos(), "Non-inherited new context, use function like `context.WithXXX` instead")
+						r.Reportf(instr, "Non-inherited new context, use function like `context.WithXXX` instead")
 					}
 				}
 			}
@@ -592,11 +580,24 @@ func (r *runner) checkFuncWithCtx(f *ssa.Function, tp entryType) {
 			res, ok := r.getValue(key, ff)
 			if ok {
 				if !res.Valid {
-					r.pass.Reportf(instr.Pos(), "Function `%s` should pass the context parameter", strings.Join(reverse(res.Funcs), "->"))
+					r.Reportf(instr, "Function `%s` should pass the context parameter", strings.Join(reverse(res.Funcs), "->"))
 				}
 			}
 		}
 	}
+}
+
+func (r *runner) Reportf(instr ssa.Instruction, format string, args ...interface{}) {
+	pos := instr.Pos()
+	if !pos.IsValid() && instr.Parent() != nil {
+		pos = instr.Parent().Pos()
+	}
+
+	if !pos.IsValid() {
+		return
+	}
+
+	r.pass.Reportf(pos, format, args...)
 }
 
 func (r *runner) checkFuncWithoutCtx(f *ssa.Function, checkingMap map[string]bool) (ret bool) {
