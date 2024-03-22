@@ -2,6 +2,7 @@ package contextcheck
 
 import (
 	"go/ast"
+	"go/token"
 	"go/types"
 	"regexp"
 	"strconv"
@@ -67,6 +68,11 @@ var (
 	pkgFactMap = make(map[*types.Package]ctxFact)
 	pkgFactMu  sync.RWMutex
 )
+
+type element interface {
+	Pos() token.Pos
+	Parent() *ssa.Function
+}
 
 type resInfo struct {
 	Valid bool
@@ -580,40 +586,15 @@ func (r *runner) checkFuncWithCtx(f *ssa.Function, tp entryType) {
 			res, ok := r.getValue(key, ff)
 			if ok {
 				if !res.Valid {
-					r.Reportf(instr, "Function `%s` should pass the context parameter", strings.Join(reverse(res.Funcs), "->"))
+					if instr.Pos().IsValid() {
+						r.Reportf(instr, "Function `%s` should pass the context parameter", strings.Join(reverse(res.Funcs), "->"))
+					} else {
+						r.Reportf(ff, "Function `%s` should pass the context parameter", strings.Join(reverse(res.Funcs), "->"))
+					}
 				}
 			}
 		}
 	}
-}
-
-func (r *runner) Reportf(instr ssa.Instruction, format string, args ...interface{}) {
-	pos := instr.Pos()
-
-	if !pos.IsValid() && instr.Block() != nil {
-		if closure, ok := instr.(*ssa.MakeClosure); ok {
-			for _, in := range closure.Block().Instrs {
-				if !in.Pos().IsValid() {
-					continue
-				}
-
-				if r, ok := in.(*ssa.Return); ok {
-					pos = r.Pos()
-					break
-				}
-			}
-		}
-	}
-
-	if !pos.IsValid() && instr.Parent() != nil {
-		pos = instr.Parent().Pos()
-	}
-
-	if !pos.IsValid() {
-		return
-	}
-
-	r.pass.Reportf(pos, format, args...)
 }
 
 func (r *runner) checkFuncWithoutCtx(f *ssa.Function, checkingMap map[string]bool) (ret bool) {
@@ -833,6 +814,20 @@ func (r *runner) setFact(key string, valid bool, funcs ...string) {
 		Valid: valid,
 		Funcs: names,
 	}
+}
+
+func (r *runner) Reportf(instr element, format string, args ...interface{}) {
+	pos := instr.Pos()
+
+	if !pos.IsValid() && instr.Parent() != nil {
+		pos = instr.Parent().Pos()
+	}
+
+	if !pos.IsValid() {
+		return
+	}
+
+	r.pass.Reportf(pos, format, args...)
 }
 
 // setPkgFact save fact to mem
