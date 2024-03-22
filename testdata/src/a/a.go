@@ -163,3 +163,11 @@ func f16(ctx context.Context, k string) func() {
 		f16(context.Background(), k)
 	}
 }
+
+func f17(ctx context.Context, k string) func() func() {
+	return func() func() { // want "Function `f17\\$1->f17\\$1\\$1` should pass the context parameter"
+		return func() {
+			f16(context.Background(), k)
+		}
+	}
+}
