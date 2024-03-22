@@ -584,13 +584,11 @@ func (r *runner) checkFuncWithCtx(f *ssa.Function, tp entryType) {
 
 			key := ff.RelString(nil)
 			res, ok := r.getValue(key, ff)
-			if ok {
-				if !res.Valid {
-					if instr.Pos().IsValid() {
-						r.Reportf(instr, "Function `%s` should pass the context parameter", strings.Join(reverse(res.Funcs), "->"))
-					} else {
-						r.Reportf(ff, "Function `%s` should pass the context parameter", strings.Join(reverse(res.Funcs), "->"))
-					}
+			if ok && !res.Valid {
+				if instr.Pos().IsValid() {
+					r.Reportf(instr, "Function `%s` should pass the context parameter", strings.Join(reverse(res.Funcs), "->"))
+				} else {
+					r.Reportf(ff, "Function `%s` should pass the context parameter", strings.Join(reverse(res.Funcs), "->"))
 				}
 			}
 		}
