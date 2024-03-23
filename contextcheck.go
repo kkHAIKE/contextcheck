@@ -2,6 +2,7 @@ package contextcheck
 
 import (
 	"go/ast"
+	"go/token"
 	"go/types"
 	"regexp"
 	"strconv"
@@ -67,6 +68,11 @@ var (
 	pkgFactMap = make(map[*types.Package]ctxFact)
 	pkgFactMu  sync.RWMutex
 )
+
+type element interface {
+	Pos() token.Pos
+	Parent() *ssa.Function
+}
 
 type resInfo struct {
 	Valid bool
@@ -456,7 +462,7 @@ func (r *runner) collectCtxRef(f *ssa.Function, isHttpHandler bool) (refMap map[
 
 	for instr := range storeInstrs {
 		if !checkedRefMap[instr.Val] {
-			r.pass.Reportf(instr.Pos(), "Non-inherited new context, use function like `context.WithXXX` instead")
+			r.Reportf(instr, "Non-inherited new context, use function like `context.WithXXX` instead")
 			ok = false
 		}
 	}
@@ -464,7 +470,7 @@ func (r *runner) collectCtxRef(f *ssa.Function, isHttpHandler bool) (refMap map[
 	for instr := range phiInstrs {
 		for _, v := range instr.Edges {
 			if !checkedRefMap[v] {
-				r.pass.Reportf(instr.Pos(), "Non-inherited new context, use function like `context.WithXXX` instead")
+				r.Reportf(instr, "Non-inherited new context, use function like `context.WithXXX` instead")
 				ok = false
 			}
 		}
@@ -564,9 +570,9 @@ func (r *runner) checkFuncWithCtx(f *ssa.Function, tp entryType) {
 			if tp&CtxIn != 0 {
 				if !refMap[instr] {
 					if isHttpHandler {
-						r.pass.Reportf(instr.Pos(), "Non-inherited new context, use function like `context.WithXXX` or `r.Context` instead")
+						r.Reportf(instr, "Non-inherited new context, use function like `context.WithXXX` or `r.Context` instead")
 					} else {
-						r.pass.Reportf(instr.Pos(), "Non-inherited new context, use function like `context.WithXXX` instead")
+						r.Reportf(instr, "Non-inherited new context, use function like `context.WithXXX` instead")
 					}
 				}
 			}
@@ -578,9 +584,11 @@ func (r *runner) checkFuncWithCtx(f *ssa.Function, tp entryType) {
 
 			key := ff.RelString(nil)
 			res, ok := r.getValue(key, ff)
-			if ok {
-				if !res.Valid {
-					r.pass.Reportf(instr.Pos(), "Function `%s` should pass the context parameter", strings.Join(reverse(res.Funcs), "->"))
+			if ok && !res.Valid {
+				if instr.Pos().IsValid() {
+					r.Reportf(instr, "Function `%s` should pass the context parameter", strings.Join(reverse(res.Funcs), "->"))
+				} else {
+					r.Reportf(ff, "Function `%s` should pass the context parameter", strings.Join(reverse(res.Funcs), "->"))
 				}
 			}
 		}
@@ -804,6 +812,20 @@ func (r *runner) setFact(key string, valid bool, funcs ...string) {
 		Valid: valid,
 		Funcs: names,
 	}
+}
+
+func (r *runner) Reportf(instr element, format string, args ...interface{}) {
+	pos := instr.Pos()
+
+	if !pos.IsValid() && instr.Parent() != nil {
+		pos = instr.Parent().Pos()
+	}
+
+	if !pos.IsValid() {
+		return
+	}
+
+	r.pass.Reportf(pos, format, args...)
 }
 
 // setPkgFact save fact to mem
