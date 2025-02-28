@@ -3,6 +3,7 @@ package a // want package:"ctxCheck"
 import (
 	"context"
 	"net/http"
+	"slices"
 )
 
 type MyString string
@@ -169,5 +170,15 @@ func f17(ctx context.Context, k string) func() func() {
 		return func() {
 			f16(context.Background(), k)
 		}
+	}
+}
+
+/* ----------------- range over iter.Seq ----------------- */
+
+func fIterSeq() {
+	seq := slices.Values([]any{"a"})
+	for range seq {
+		_, cancel := context.WithCancel(context.Background())
+		defer cancel()
 	}
 }
