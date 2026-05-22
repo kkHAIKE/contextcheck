@@ -1,10 +1,13 @@
 package contextcheck
 
 import (
+	"bytes"
+	"encoding/gob"
 	"go/ast"
 	"go/token"
 	"go/types"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 
@@ -88,6 +91,47 @@ type ctxFact map[string]resInfo
 
 func (*ctxFact) String() string { return "ctxCheck" }
 func (*ctxFact) AFact()         {}
+
+type ctxFactEntry struct {
+	Key string
+	Res resInfo
+}
+
+func (fact ctxFact) GobEncode() ([]byte, error) {
+	entries := make([]ctxFactEntry, 0, len(fact))
+	keys := make([]string, 0, len(fact))
+	for key := range fact {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	for _, key := range keys {
+		entries = append(entries, ctxFactEntry{
+			Key: key,
+			Res: fact[key],
+		})
+	}
+
+	var buf bytes.Buffer
+	if err := gob.NewEncoder(&buf).Encode(entries); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func (fact *ctxFact) GobDecode(data []byte) error {
+	var entries []ctxFactEntry
+	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&entries); err != nil {
+		return err
+	}
+
+	decoded := make(ctxFact, len(entries))
+	for _, entry := range entries {
+		decoded[entry.Key] = entry.Res
+	}
+	*fact = decoded
+	return nil
+}
 
 type runner struct {
 	pass     *analysis.Pass
