@@ -155,3 +155,7 @@ $ contextcheck ./...
 $ # or
 $ go vet -vettool=`which contextcheck` ./...
 ```
+
+## Support
+
+If you find this project useful, consider [sponsoring my open-source work](https://github.com/sponsors/kkHAIKE).
